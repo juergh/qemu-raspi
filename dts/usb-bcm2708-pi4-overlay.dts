@@ -1,0 +1,17 @@
+/*
+ * Enable the bcm2708 USB controller on Pi 4.
+ */
+
+/dts-v1/;
+/plugin/;
+
+/{
+	compatible = "brcm,bcm2711";
+
+	fragment@0 {
+		target = <&usb>;
+		__overlay__ {
+			status = "okay";
+		};
+	};
+};

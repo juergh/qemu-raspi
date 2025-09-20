@@ -1,0 +1,15 @@
+commit d84dc9bd5f9eef141e5a98d5c10114a1f670e8ef
+Author: Tim Gover <tim.gover@raspberrypi.com>
+Date:   Fri Sep 12 15:26:14 2025 +0100
+
+    rpifwcrypto: Add a command to retrieve private keys
+    
+    Add support for a new mailbox API which returns the private key
+    in DER form. This API will return an error if the private key
+    is locked.
+    
+    Example:
+    rpi-fw-crypto privkey --key-id 1 --out privkey.der
+    
+    N.B. Tidyup of buffer size defines
+    RPI_FW_CRYPTO_PUBKEY_MAX_SIZE -> RPI_FW_CRYPTO_PUBLIC_KEY_MAX_SIZE

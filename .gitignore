@@ -1,0 +1,5 @@
+*~
+build/
+dist/
+src/qemu_raspi/__pycache__/
+src/qemu_raspi.egg-info/

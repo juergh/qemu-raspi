@@ -1,0 +1,19 @@
+#!/bin/bash -u
+
+image=${1}
+
+LOOP_DEV=$(sudo losetup -f --show -P "${image}")
+if [ -z "${LOOP_DEV}" ] ; then
+	exit 1
+fi
+
+echo "lsblk"
+echo "-----"
+lsblk -o NAME,LABEL,SIZE,TYPE "${LOOP_DEV}"
+
+echo
+echo "blkid"
+echo "-----"
+sudo blkid "${LOOP_DEV}"*
+
+sudo losetup -D "${LOOP_DEV}"

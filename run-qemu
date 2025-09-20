@@ -1,0 +1,64 @@
+#!/bin/bash -eu
+
+function usage()
+{
+	cat << EOF
+Usage: run-qemu [-h] [--model MODEL] IMAGE [ARGS...]
+
+Positional arguments:
+  IMAGE    Image file.
+  ARGS     Additional arguments passed to qemu-raspi.
+
+Optional arguments:
+  -h, --help     Show this help text and exit.
+  --model MODEL  Raspberry Pi model (pi3, pi4) [Required].
+EOF
+}
+
+model=
+image=
+
+while [ "${#}" -gt 0 ] ; do
+	case "${1}" in
+		-h|--help)
+			usage
+			exit
+			;;
+		--model)
+			shift
+			model=${1}
+			;;
+		-*)
+			usage >&2
+			exit 2
+			;;
+		*)
+			image=${1}
+			shift
+			args=("${@}")
+			break
+			;;
+	esac
+	shift
+done
+
+if [ -z "${model}" ] || [ -z "${image}" ] ; then
+	usage >&2
+	exit 2
+fi
+
+workdir=$(pwd)/boot-assets
+mkdir -p "${workdir}"
+
+# Pull kernel, initrd, ... from the image
+echo "II: Copy boot assets to: ${workdir}"
+./pull-boot-assets --model "${model}" "${image}" "${workdir}"
+
+# Use QEMU -no-reboot argument so that we can loop explicitly
+if ! [[ " ${args[*]} " =~ " -- " ]]; then
+	args+=("--")
+fi
+args+=("-no-reboot")
+
+# Run QEMU
+./qemu-raspi --image "${image}" --config-json "${workdir}"/config.json "${args[@]}"

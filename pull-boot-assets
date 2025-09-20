@@ -1,0 +1,180 @@
+#!/bin/bash -eu
+#
+# Pull boot assets from an image
+#
+
+function out()
+{
+	rc=${?}
+
+	trap - EXIT INT TERM HUP
+
+	if [ -n "${MOUNT_DIR}" ] ; then
+		echo "II: Unmmount boot partition"
+		sudo umount "${MOUNT_DIR}" || sudo umount -l "${MOUNT_DIR}"
+	fi
+
+	if [ -n "${LOOP_DEV}" ] ; then
+		echo "II: Detach image"
+		sudo losetup -D "${LOOP_DEV}"
+	fi
+
+	if [ ${rc} -ne 0 ] ; then
+		echo "Error: Script failed" >&2
+	fi
+}
+
+function usage()
+{
+	cat << EOF
+Usage: pull-boot-assets [--debug] [-h] [--model MODEL] [--tryboot] IMAGE DESTDIR
+
+Pull all boot assets from a Raspberry Pi image.
+
+Positional arguments:
+  IMAGE    Image file.
+  DESTDIR  Destination directory for the boot assets.
+
+Optional arguments:
+  --debug        Enable debug output.
+  -h, --help     Show this help text and exit.
+  --model MODEL  Raspberry Pi model (pi3, pi4) [Required].
+  --tryboot      Assume tryboot.
+EOF
+}
+
+debug=0
+model=
+tryboot=0
+image=
+dest_dir=
+
+while [ "${#}" -gt 0 ] ; do
+	case "${1}" in
+		--debug)
+			debug=1
+			;;
+		-h|--help)
+			usage
+			exit
+			;;
+		--model)
+			shift
+			model=${1}
+			;;
+		--tryboot)
+			tryboot=1
+			;;
+		-*)
+			usage >&2
+			exit 2
+			;;
+		*)
+			if [ -z "${image}" ] ; then
+				image=${1}
+			elif [ -z "${dest_dir}" ] ; then
+				dest_dir=${1}
+			else
+				echo "EE: Invalid argument: ${1}" >&2
+				exit 2
+			fi
+			;;
+	esac
+	shift
+done
+
+if [ -z "${image}" ] || [ -z "${dest_dir}" ] || [ -z "${model}" ] ; then
+	usage >&2
+	exit 2
+fi
+
+case "${model}" in
+	pi3|pi4) ;;
+	*)
+		echo "EE: Invalid model: ${model}" >&2
+		exit 2
+		;;
+esac
+
+if ! [ -e "${image}" ] ; then
+	echo "EE: No such image file: ${image}" >&2
+	exit 1
+fi
+
+#if [ -d "${dest_dir}" ] ; then
+#	echo "EE: Directory exists already: ${dest_dir}" >&2
+#	exit 1
+#fi
+
+if ! mkdir -p "${dest_dir}" ; then
+	echo "EE: Failed to create directory: ${dest_dir}" >&2
+	exit 1
+fi
+
+# Find the first vfat partition
+boot_part=$(partx --raw --noheading --output NR,TYPE "${image}" | sed -n 's/ 0xc$//p')
+if [ -z "${boot_part}" ] ; then
+	echo "EE: Failed to find boot partition" >&2
+	exit 1
+fi
+
+LOOP_DEV=
+MOUNT_DIR=
+trap out EXIT INT TERM HUP
+
+LOOP_DEV=$(sudo losetup -f --show -P "${image}")
+echo "II: Image attached to: ${LOOP_DEV}"
+
+boot_part=${LOOP_DEV}p${boot_part}
+
+echo "II: Mount boot partition: ${boot_part}"
+MOUNT_DIR="${dest_dir}"/boot
+mkdir -p "${MOUNT_DIR}"
+sudo mount "${boot_part}" "${MOUNT_DIR}"
+
+if [ ${debug} -eq 1 ] ; then
+	echo "DD: Boot partition content:"
+	find "${MOUNT_DIR}"
+fi >&2
+
+echo "II: Parse config.txt:"
+opts=(--model "${model}")
+if [ ${tryboot} -eq 1 ] ; then
+	opts+=(--tryboot)
+fi
+./parse-config-txt "${opts[@]}" "${MOUNT_DIR}"/config.txt > "${dest_dir}"/config.json
+
+# Convert json to a sourceable file
+jq -r '
+  with_entries(
+    .value |= if type=="array" then join(" ") else . end
+  ) |
+  to_entries[] | "\(.key)=\"\(.value)\""
+' "${dest_dir}"/config.json > "${dest_dir}"/config.vars
+
+sed 's/^/II:   /' "${dest_dir}"/config.vars
+
+os_prefix=__invalid__
+overlay_prefix=__invalid__
+cmdline=__invalid__
+kernel=__invalid__
+initramfs=__invalid__
+dtb=__invalid__
+
+# shellcheck disable=SC1091
+. "${dest_dir}"/config.vars
+
+echo "II: Copy boot assets:"
+
+for f in config.txt \
+         "${os_prefix}${cmdline}" \
+         "${os_prefix}${kernel}" \
+         "${os_prefix}${initramfs}" \
+         "${os_prefix}${dtb}" ; do
+	echo "II:   ${f}"
+	cp "${MOUNT_DIR}"/"${f}" "${dest_dir}"/
+done
+
+echo "II:   ${os_prefix}${overlay_prefix}*"
+mkdir -p "${dest_dir}"/overlays
+cp "${MOUNT_DIR}"/"${os_prefix}${overlay_prefix}"* "${dest_dir}"/overlays/
