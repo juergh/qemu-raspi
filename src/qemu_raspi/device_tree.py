@@ -26,7 +26,7 @@ def merge(indtb, outdtb, dtmerge, overlays_dir="overlays", dtmerge_bin="dtmerge"
             continue
 
         if key == "dtoverlay":
-            if val.startswith("vc4-kms"):
+            if val.startswith("vc4-kms") or val.startswith("vc4-fkms"):
                 log.warn(f"Ignore dtoverlay: {val}")
                 continue
 
