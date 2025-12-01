@@ -14,9 +14,9 @@ def qemu(
     kernel,
     initrd=None,
     image=None,
-    cmdline=None,
-    earlycon=False,
-    console=[],
+    cmdline=[],
+    cmdline_add=[],
+    cmdline_del=[],
     config=[],
     dry_run=False,
     qemu_args=[],
@@ -28,23 +28,20 @@ def qemu(
     # Model specifics
     if model == "pi3":
         machine = "raspi3b"
-        earlycon_opts = "earlycon=pl011,mmio32,0x3f215040"
+        earlycon = "earlycon=pl011,mmio32,0x3f215040"
     else:
         machine = "raspi4b"
-        earlycon_opts = "earlycon=pl011,mmio32,0xfe201000"
+        earlycon = "earlycon=pl011,mmio32,0xfe201000"
 
-    # (Pre-) assemble the kernel commandline
-    # TODO: Use bootargs from the DTB?
-    if cmdline:
-        cmdline = cmdline.split(" ")
-    else:
-        cmdline = ["ignore_loglevel"]
-    if earlycon:
-        cmdline.append(earlycon_opts)
-    if console:
-        # Remove existing console arguments before adding explicit ones
-        cmdline = [c for c in cmdline if not c.startswith("console=")]
-        cmdline.extend([f"console={c}" for c in console])
+    for c in cmdline_del:
+        if c in cmdline:
+            cmdline.remove(c)
+
+    for c in cmdline_add:
+        if c == "earlycon":
+            cmdline.append(earlycon)
+        else:
+            cmdline.append(c)
 
     # Process config
     dtmerge = []
@@ -136,9 +133,9 @@ def main():
     parser.add_argument("--kernel", help="Kernel file")
     parser.add_argument("--initrd", help="Initramfs file")
     parser.add_argument("--overlays", help="Directory with the DTB overlays")
-    parser.add_argument("--cmdline", help="Kernel commandline")
-    parser.add_argument("--earlycon", action="store_true", help="Add 'earlycon=...' to the kernel commandline")
-    parser.add_argument("--console", action="append", help="Add 'console=...' to the kernel commandline")
+    parser.add_argument("--cmdline", default="", help="Kernel commandline")
+    parser.add_argument("--cmdline-add", default="", help="List of options to add to the kernel commandline")
+    parser.add_argument("--cmdline-del", default="", help="List of options to delete from the kernel commandline")
     parser.add_argument("--config", action="append", default=[], help="Specify config.txt settings")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--verbose", action="store_true")
@@ -164,9 +161,9 @@ def main():
         args.kernel,
         initrd=args.initrd,
         image=args.image,
-        cmdline=args.cmdline,
-        earlycon=args.earlycon,
-        console=args.console,
+        cmdline=args.cmdline.split(" "),
+        cmdline_add=args.cmdline_add.split(" "),
+        cmdline_del=args.cmdline_del.split(" "),
         config=args.config,
         overlays_dir=args.overlays,
         dry_run=args.dry_run,
