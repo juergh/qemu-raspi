@@ -11,7 +11,7 @@ function out()
 
 	if [ -n "${MOUNT_DIR}" ] ; then
 		echo "II: Unmmount boot partition"
-		sudo umount "${MOUNT_DIR}" || sudo umount -l "${MOUNT_DIR}"
+		sudo umount "${MOUNT_DIR}" || sudo umount -l "${MOUNT_DIR}" 2>/dev/null
 	fi
 
 	if [ -n "${LOOP_DEV}" ] ; then
@@ -111,10 +111,10 @@ if ! mkdir -p "${dest_dir}" ; then
 	exit 1
 fi
 
-# Find the first vfat partition
-boot_part=$(partx --raw --noheading --output NR,TYPE "${image}" | sed -n 's/ 0xc$//p')
-if [ -z "${boot_part}" ] ; then
-	echo "EE: Failed to find boot partition" >&2
+# Find all vfat partitions
+readarray -t vfat_parts < <(partx --raw --noheading --output NR,TYPE "${image}" | sed -n 's/ 0xc$//p')
+if [ ${#vfat_parts[@]} -eq 0 ] ; then
+	echo "EE: No VFAT partition found" >&2
 	exit 1
 fi
 
@@ -125,12 +125,24 @@ trap out EXIT INT TERM HUP
 LOOP_DEV=$(sudo losetup -f --show -P "${image}")
 echo "II: Image attached to: ${LOOP_DEV}"
 
-boot_part=${LOOP_DEV}p${boot_part}
-
-echo "II: Mount boot partition: ${boot_part}"
 MOUNT_DIR="${dest_dir}"/boot
 mkdir -p "${MOUNT_DIR}"
-sudo mount "${boot_part}" "${MOUNT_DIR}"
+
+boot_part=
+for n in "${vfat_parts[@]}" ; do
+	part=${LOOP_DEV}p${n}
+	sudo mount "${part}" "${MOUNT_DIR}"
+	if [ -e "${MOUNT_DIR}"/config.txt ] ; then
+		boot_part=${part}
+		break
+	fi
+done
+if [ -z "${boot_part}" ] ; then
+	echo "EE: Boot partition not found" >&2
+	exit 1
+fi
+
+echo "II: Mounted boot partition: ${boot_part}"
 
 if [ ${debug} -eq 1 ] ; then
 	echo "DD: Boot partition content:"
