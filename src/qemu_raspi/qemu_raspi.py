@@ -71,11 +71,12 @@ def qemu(
         "-device", "usb-mouse",
         "-device", "usb-net,netdev=net0",
         "-netdev", "user,id=net0,hostfwd=tcp::5022-:22",
-        "-drive", f"file={image},if=sd,format=raw,index=0"
     ]
     # fmt: on
     if initrd:
         cmd.extend(["-initrd", initrd])
+    if image:
+        cmd.extend(["-drive", f"file={image},if=sd,format=raw,index=0"])
     cmd.extend(qemu_args)
 
     log.info(cmd)
